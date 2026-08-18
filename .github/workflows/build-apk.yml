@@ -29,7 +29,6 @@ jobs:
         run: bash tool/bootstrap.sh
 
       - name: Configure permanent upload key
-        if: ${{ secrets.ORBIT_UPLOAD_KEYSTORE_BASE64 != '' }}
         working-directory: orbit8d
         env:
           KEYSTORE_BASE64: ${{ secrets.ORBIT_UPLOAD_KEYSTORE_BASE64 }}
@@ -37,13 +36,17 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ORBIT_UPLOAD_KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ORBIT_UPLOAD_KEY_ALIAS }}
         run: |
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/upload-keystore.jks
-          {
-            printf 'storePassword=%s\n' "$STORE_PASSWORD"
-            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
-            printf 'keyAlias=%s\n' "$KEY_ALIAS"
-            printf 'storeFile=../upload-keystore.jks\n'
-          } > android/key.properties
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/upload-keystore.jks
+            {
+              printf 'storePassword=%s\n' "$STORE_PASSWORD"
+              printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+              printf 'keyAlias=%s\n' "$KEY_ALIAS"
+              printf 'storeFile=../upload-keystore.jks\n'
+            } > android/key.properties
+          else
+            echo "No permanent upload key configured; using test signing."
+          fi
 
       - name: Build Google Play bundle
         working-directory: orbit8d

@@ -1,12 +1,7 @@
-name: Build Android APK
+name: Build Orbit8D editions
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "orbit8d-mvp-source.zip"
-      - ".github/workflows/build-apk.yml"
 
 permissions:
   contents: read
@@ -14,10 +9,11 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Extract source
         run: unzip -q orbit8d-mvp-source.zip
@@ -28,17 +24,59 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Generate Android project and test
+      - name: Generate projects and test
         working-directory: orbit8d
         run: bash tool/bootstrap.sh
 
-      - name: Build release APK
+      - name: Configure permanent upload key
+        if: ${{ secrets.ORBIT_UPLOAD_KEYSTORE_BASE64 != '' }}
         working-directory: orbit8d
-        run: flutter build apk --release
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ORBIT_UPLOAD_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ORBIT_UPLOAD_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ORBIT_UPLOAD_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ORBIT_UPLOAD_KEY_ALIAS }}
+        run: |
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/upload-keystore.jks
+          {
+            printf 'storePassword=%s\n' "$STORE_PASSWORD"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'storeFile=../upload-keystore.jks\n'
+          } > android/key.properties
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Build Google Play bundle
+        working-directory: orbit8d
+        run: flutter build appbundle --flavor play --dart-define=ORBIT_EDITION=play --release
+
+      - name: Build Google Play test APK
+        working-directory: orbit8d
+        run: flutter build apk --flavor play --dart-define=ORBIT_EDITION=play --release
+
+      - name: Build Private APK
+        working-directory: orbit8d
+        run: flutter build apk --flavor private --dart-define=ORBIT_EDITION=private --release
+
+      - name: Upload Google Play bundle
+        uses: actions/upload-artifact@v7
         with:
-          name: orbit8d-android-apk
-          path: orbit8d/build/app/outputs/flutter-apk/app-release.apk
+          name: orbit8d-play-aab
+          path: orbit8d/build/app/outputs/bundle/playRelease/app-play-release.aab
           if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload Google Play test APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: orbit8d-play-apk
+          path: orbit8d/build/app/outputs/flutter-apk/app-play-release.apk
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload Private APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: orbit8d-private-apk
+          path: orbit8d/build/app/outputs/flutter-apk/app-private-release.apk
+          if-no-files-found: error
+          compression-level: 0
